@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "terminal_server":{
+      "command": "/Users/nishit/.local/bin/uv",
+      "args":[
+        "--directory","/Users/nishit/mcp_a2a_project/mcp/servers/terminal_server",
+        "run",
+        "terminal_server.py"
+      ]
+    },
+    "arithmetic_server":{
+      "command":"streamable_http",
+      "args":[
+        "http://localhost:3000/mcp/"
+      ]
+    }
+  }
+}
