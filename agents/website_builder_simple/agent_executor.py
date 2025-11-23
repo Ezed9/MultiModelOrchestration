@@ -1,14 +1,12 @@
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
-from a2a.server.tasks import TaskUpdater, Task
+from a2a.server.tasks import TaskUpdater
 from agents.website_builder_simple.agent import WebsiteBuilderSimple
 from a2a.utils import (
     new_task,
     new_agent_text_message
 )
 from a2a.types import TaskState
-from a2a.server.errors import ServerError, UnsupportedOperationError
-
 import asyncio
 
 
@@ -28,32 +26,31 @@ class WebsiteBuilderSimpleAgentExecutor(AgentExecutor):
         Takes user context and streams events back.
         """
 
-        # Collect user's input text
+        # Get the user's query text
         query = context.get_user_input()
 
-        # Get the current task
+        # Get current task if it exists
         task = context.current_task
 
-        # If no task exists, create a new one
+        # Create a new task if one does not exist
         if not task:
             task = new_task(context.message)
             await event_queue.enqueue_event(task)
 
-        # Create a helper object to update task progress
+        # Create task updater to stream updates
         updater = TaskUpdater(event_queue, task.id, task.context_id)
 
         try:
-            # Stream results from your AI agent
+            # Stream agent responses
             async for item in self.agent.invoke(query, task.context_id):
 
-                # Check if task is complete
                 is_task_complete = item.get("is_task_complete", False)
 
-                # If still processing, send progress updates
+                # If task is still running
                 if not is_task_complete:
                     message = item.get(
                         "updates",
-                        "The Agent is still working on your request"
+                        "The agent is still working on your request..."
                     )
                     await updater.update_status(
                         TaskState.working,
@@ -63,9 +60,10 @@ class WebsiteBuilderSimpleAgentExecutor(AgentExecutor):
                             task.id
                         )
                     )
+
+                # If task is complete
                 else:
-                    # Final result
-                    final_result = item.get("content", "no result received")
+                    final_result = item.get("content", "No result received")
 
                     await updater.update_status(
                         TaskState.completed,
@@ -76,12 +74,12 @@ class WebsiteBuilderSimpleAgentExecutor(AgentExecutor):
                         )
                     )
 
-                    # Small delay to ensure message is delivered
+                    # Give time for event delivery
                     await asyncio.sleep(0.1)
                     break
 
         except Exception as e:
-            # Error handling for failures
+            # Handle failures
             error_message = f"An error occurred: {str(e)}"
 
             await updater.update_status(
@@ -92,12 +90,10 @@ class WebsiteBuilderSimpleAgentExecutor(AgentExecutor):
                     task.id
                 )
             )
-
-            # Re-throw the error
             raise
 
-    async def cancel(self, request: RequestContext, event_queue: EventQueue) -> Task | None:
+    async def cancel(self, request: RequestContext, event_queue: EventQueue):
         """
         Cancel operation is not supported for this agent.
         """
-        raise ServerError(error=UnsupportedOperationError())
+        raise NotImplementedError("Cancel operation is not supported")
