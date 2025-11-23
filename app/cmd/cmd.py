@@ -22,35 +22,44 @@ async def cli(agent: str, session: str):
 
     print(f"Using session ID: {session_id}")
 
-    while True:
-        prompt = await click.prompt(
-            "\nWhat do you want to send to the agent? (type ':q' or 'quit' to exit)"
-        )
-
-        # Exit condition
-        if prompt.strip().lower() in ["quit", ":q"]:
-            break
-
-        card: AgentCard = None
-
-        # ✅ Resolve agent card
-        async with httpx.AsyncClient(timeout=300.0) as httpx_client:
+    async with httpx.AsyncClient(timeout=300.0) as httpx_client:
+        # ✅ Resolve agent card ONCE
+        try:
             resolver = A2ACardResolver(
                 base_url=agent.rstrip("/"),
                 httpx_client=httpx_client
             )
-
             card = await resolver.get_agent_card()
+        except Exception as e:
+            print(f"Error resolving agent: {e}")
+            return
 
-        # ✅ Send task
         connector = AgentConnector(card)
-        result = await connector.send_task(
-            message=prompt,
-            session_id=session_id
-        )
 
-        # ✅ Print result
-       # print(f"\nAgent Response:\n{result}")
+        while True:
+            try:
+                prompt = await click.prompt(
+                    "\nWhat do you want to send to the agent? (type ':q' or 'quit' to exit)"
+                )
+
+                # Exit condition
+                if prompt.strip().lower() in ["quit", ":q"]:
+                    break
+
+                # ✅ Send task using shared client
+                result = await connector.send_task(
+                    message=prompt,
+                    session_id=session_id,
+                    httpx_client=httpx_client
+                )
+
+                # ✅ Print result
+                print(f"\nAgent Response:\n{result}")
+
+            except click.Abort:
+                break
+            except Exception as e:
+                print(f"\nError sending message: {e}")
 
 
 if __name__ == "__main__":
