@@ -2,7 +2,7 @@ from typing import AsyncIterable
 from uuid import uuid4
 
 from utilities.a2a.agent_discovery import AgentDiscovery
-from utilities.a2a.agent_connector import AgentConnector   # ✅ FIXED import name
+from utilities.a2a.agent_connector import AgentConnector
 from utilities.common.file_loader import load_instructions_file
 
 from google.adk.agents import LlmAgent
@@ -23,34 +23,74 @@ load_dotenv()
 
 class HostAgent:
     """
-    Orchestrator agent:
-    - Discovers A2A agents
-    - Discovers MCP servers and loads tools
-    - Routes user queries to correct agent/tools
+    Orchestrator agent
     """
 
     def __init__(self):
-        # Load system instructions
+        # Load instructions
         self.system_instruction = load_instructions_file(
             "agents/host_agent/instructions.txt"
         )
 
-        # Load host agent description
         self.description = load_instructions_file(
             "agents/host_agent/description.txt"
         )
 
-        # User/session ID
+        # IDs
         self._user_id = "host_agent_user"
 
-        # Discovery tools
+        # Services
         self.agent_discovery = AgentDiscovery()
         self.mcp_connector = MCPConnect()
 
-        # Build the LLM agent
-        self._agent = self._build_agent()
+        # Will be built lazily
+        self._agent = None
+        self._runner = None
 
-        # Runner for sessions + memory
+    # ---------------- TOOLS ---------------- #
+
+    async def _list_agents(self) -> list[dict]:
+        cards: list[AgentCard] = await self.agent_discovery.list_agent_cards()
+        return [card.model_dump(exclude_none=True) for card in cards]
+
+    async def _delegate_task(self, agent_name: str, message: str) -> str:
+        cards = await self.agent_discovery.list_agent_cards()
+        matched = None
+
+        for card in cards:
+            if card.name.lower() == agent_name.lower():
+                matched = card
+                break
+
+        if not matched:
+            return f"Agent '{agent_name}' not found"
+
+        connector = AgentConnector(agent_card=matched)
+
+        return await connector.send_task(
+            message=message,
+            session_id=str(uuid4())
+        )
+
+    # ---------------- BUILD ---------------- #
+
+    async def _init_agent(self):
+        """Proper async-safe builder"""
+
+        mcp_tools = await self.mcp_connector.get_tools()
+
+        self._agent = LlmAgent(
+            name="host_agent",
+            model="gemini-2.5-flash",
+            instruction=self.system_instruction,
+            description=self.description,
+            tools=[
+                FunctionTool(self._delegate_task),
+                FunctionTool(self._list_agents),
+                *mcp_tools
+            ]
+        )
+
         self._runner = Runner(
             app_name=self._agent.name,
             agent=self._agent,
@@ -59,55 +99,13 @@ class HostAgent:
             memory_service=InMemoryMemoryService(),
         )
 
-    # ---------------- TOOLS ---------------- #
-
-    async def _list_agents(self) -> list[dict]:
-        """Returns list of agent card dictionaries"""
-        cards: list[AgentCard] = await self.agent_discovery.list_agent_cards()
-        return [card.model_dump(exclude_none=True) for card in cards]
-
-    async def _delegate_task(self, agent_name: str, message: str) -> str:
-        """Delegates a task to a discovered agent"""
-
-        cards = await self.agent_discovery.list_agent_cards()
-        matched_card = None
-
-        for card in cards:
-            if card.name.lower() == agent_name.lower():
-                matched_card = card
-                break
-
-        if not matched_card:
-            return f"Agent '{agent_name}' not found"
-
-        connector = AgentConnector(agent_card=matched_card)
-        result = await connector.send_task(
-            message=message,
-            session_id=str(uuid4())
-        )
-
-        return result
-
-    # ---------------- AGENT BUILD ---------------- #
-
-    def _build_agent(self) -> LlmAgent:
-        """Build the LLM agent"""
-        return LlmAgent(
-            name="host_agent",
-            model="gemini-2.5-flash",
-            instruction=self.system_instruction,
-            description=self.description,
-            tools=[
-                FunctionTool(self._delegate_task),
-                FunctionTool(self._list_agents),
-                *self.mcp_connector.get_tools()   # ✅ FIXED name
-            ]
-        )
-
     # ---------------- INVOKE ---------------- #
 
     async def invoke(self, query: str, session_id: str) -> AsyncIterable[dict]:
-        """Streams responses from the host agent"""
+
+        # ✅ Lazy initialize async things
+        if self._agent is None or self._runner is None:
+            await self._init_agent()
 
         session = await self._runner.session_service.get_session(
             app_name=self._agent.name,
@@ -136,9 +134,9 @@ class HostAgent:
                 final_response = ""
 
                 if (
-                    event.content
-                    and event.content.parts
-                    and event.content.parts[-1].text
+                    event.content and
+                    event.content.parts and
+                    event.content.parts[-1].text
                 ):
                     final_response = event.content.parts[-1].text
 
@@ -146,9 +144,8 @@ class HostAgent:
                     "is_task_complete": True,
                     "content": final_response
                 }
-
             else:
                 yield {
                     "is_task_complete": False,
                     "updates": "agent is processing your request..."
-                }
+                } 
