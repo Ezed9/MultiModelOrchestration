@@ -81,7 +81,25 @@ class AgentConnector:
             agent_response = (
                 response_data["result"]["status"]["message"]["parts"][0]["text"]
             )
-        except (KeyError, IndexError, TypeError):
-            agent_response = "No response from agent"
+            # If response is empty, try to get a better error message
+            if not agent_response or agent_response.strip() == "":
+                # Check if there's history with actual content
+                if "result" in response_data and "history" in response_data["result"]:
+                    history = response_data["result"]["history"]
+                    # Look for the last agent message in history
+                    for msg in reversed(history):
+                        if msg.get("role") == "agent" and msg.get("parts"):
+                            for part in msg["parts"]:
+                                if part.get("kind") == "text" and part.get("text"):
+                                    agent_response = part["text"]
+                                    break
+                            if agent_response:
+                                break
+                
+                # Still empty? Return a helpful message
+                if not agent_response or agent_response.strip() == "":
+                    agent_response = "The agent processed your request but returned no text response."
+        except (KeyError, IndexError, TypeError) as e:
+            agent_response = f"Error parsing agent response: {str(e)}"
 
         return agent_response
