@@ -2,14 +2,14 @@ import asyncio
 from uuid import uuid4
 from a2a.types import AgentCard
 from a2a.client import A2ACardResolver
-import click
+import asyncclick as click
 import httpx
 
 from utilities.a2a.agent_connector import AgentConnector
 
 
 @click.command()
-@click.option("--agent", default="http://localhost:10001", help="Base URL of the agent")
+@click.option("--agent", default="http://localhost:11000", help="Base URL of the agent")
 @click.option("--session", default="0", help="Session ID (use 0 to generate a new one)")
 async def cli(agent: str, session: str):
     """
@@ -23,7 +23,7 @@ async def cli(agent: str, session: str):
     print(f"Using session ID: {session_id}")
 
     while True:
-        prompt = click.prompt(
+        prompt = await click.prompt(
             "\nWhat do you want to send to the agent? (type ':q' or 'quit' to exit)"
         )
 
@@ -54,4 +54,4 @@ async def cli(agent: str, session: str):
 
 
 if __name__ == "__main__":
-    asyncio.run(cli())
+    cli(_anyio_backend="asyncio")
