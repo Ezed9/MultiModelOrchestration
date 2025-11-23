@@ -1,7 +1,7 @@
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
-from agents.website_builder_simple.agent import WebsiteBuilderSimple
+from agents.host_agent import HostAgent
 from a2a.utils import (
     new_task,
     new_agent_text_message
@@ -10,7 +10,7 @@ from a2a.types import TaskState
 import asyncio
 
 
-class WebsiteBuilderSimpleAgentExecutor(AgentExecutor):
+class HostAgentExecutor(AgentExecutor):
     """
     Connects your WebsiteBuilderSimple agent to the A2A framework.
     This class controls how requests are executed and streamed.
@@ -18,7 +18,7 @@ class WebsiteBuilderSimpleAgentExecutor(AgentExecutor):
 
     def __init__(self):
         # Create an instance of your AI agent
-        self.agent = WebsiteBuilderSimple()
+        self.agent = HostAgent()
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         """
