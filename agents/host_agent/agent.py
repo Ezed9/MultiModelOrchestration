@@ -77,7 +77,8 @@ class HostAgent:
     async def _init_agent(self):
         """Proper async-safe builder"""
 
-        mcp_tools = await self.mcp_connector.get_tools()
+        await self.mcp_connector.load_all_tools()
+        mcp_tools = self.mcp_connector.get_tools()
 
         self._agent = LlmAgent(
             name="host_agent",

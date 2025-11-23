@@ -21,7 +21,7 @@ class MCPConnect:
         and caches them as MCPToolsets.
         """
         try:
-            for name, server in self.discovery.list_servers():
+            for name, server in self.discovery.list_servers().items():
                 # Choose connection type
                 if server.get("command") == "streamable_http":
                     conn = StreamableHTTPConnectionParams(
