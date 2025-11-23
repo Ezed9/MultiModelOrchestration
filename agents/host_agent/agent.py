@@ -17,6 +17,9 @@ from google.genai import types
 from utilities.mcp.mcp_connect import MCPConnect
 from a2a.types import AgentCard
 
+from dotenv import load_dotenv
+load_dotenv()
+
 
 class HostAgent:
     """
@@ -91,7 +94,7 @@ class HostAgent:
         """Build the LLM agent"""
         return LlmAgent(
             name="host_agent",
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             instruction=self.system_instruction,
             description=self.description,
             tools=[

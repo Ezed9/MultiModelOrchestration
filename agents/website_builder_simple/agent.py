@@ -48,7 +48,7 @@ class WebsiteBuilderSimple:
         """
         return LlmAgent(
             name="website_builder_simple",
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             instruction=self.system_instruction,
             description=self.description,
         )
@@ -92,6 +92,7 @@ class WebsiteBuilderSimple:
             session_id=session_id,
             new_message=user_content,
         ):
+            print_json_response(event, "=====NEW EVENT=====")
             # If this is the final response from the model
             if event.is_final_response:
                 final_response = ""
