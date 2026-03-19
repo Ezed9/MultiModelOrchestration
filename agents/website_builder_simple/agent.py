@@ -1,4 +1,4 @@
-from typing import AsyncIterable
+from typing import AsyncGenerator
 from utilities.common.file_loader import load_instructions_file
 from google.adk.agents import LlmAgent
 from google.adk import Runner
@@ -9,6 +9,8 @@ from google.adk.memory.in_memory_memory_service import InMemoryMemoryService
 
 from google.genai import types
 
+from dotenv import load_dotenv
+load_dotenv()
 
 class WebsiteBuilderSimple:
     """
@@ -17,23 +19,25 @@ class WebsiteBuilderSimple:
     """
 
     def __init__(self):
-        # Load system instructions (rules for the agent)
         self.system_instruction = load_instructions_file(
             "agents/website_builder_simple/instructions.txt"
         )
+        if not self.system_instruction:
+            raise RuntimeError(
+                "agents/website_builder_simple/instructions.txt is missing or empty"
+            )
 
-        # Load agent description text
         self.description = load_instructions_file(
             "agents/website_builder_simple/description.txt"
         )
+        if not self.description:
+            raise RuntimeError(
+                "agents/website_builder_simple/description.txt is missing or empty"
+            )
 
-        # Build the LLM agent
         self._agent = self._build_agent()
-
-        # Unique ID for the user session
         self._user_id = "website_builder_simple_agent_user"
 
-        # Create a Runner to manage sessions, memory, and artifacts
         self._runner = Runner(
             app_name=self._agent.name,
             agent=self._agent,
@@ -43,9 +47,6 @@ class WebsiteBuilderSimple:
         )
 
     def _build_agent(self) -> LlmAgent:
-        """
-        Builds and returns the LLM agent configuration.
-        """
         return LlmAgent(
             name="website_builder_simple",
             model="gemini-2.5-flash",
@@ -53,7 +54,7 @@ class WebsiteBuilderSimple:
             description=self.description,
         )
 
-    async def invoke(self, query: str, session_id: str) -> AsyncIterable[dict]:
+    async def invoke(self, query: str, session_id: str) -> AsyncGenerator[dict, None]:
         """
         Streams responses from the agent.
 
@@ -65,14 +66,12 @@ class WebsiteBuilderSimple:
         }
         """
 
-        # Try to get an existing session
         session = await self._runner.session_service.get_session(
             app_name=self._agent.name,
             session_id=session_id,
             user_id=self._user_id,
         )
 
-        # If session doesn’t exist, create a new one
         if not session:
             session = await self._runner.session_service.create_session(
                 app_name=self._agent.name,
@@ -80,36 +79,30 @@ class WebsiteBuilderSimple:
                 user_id=self._user_id,
             )
 
-        # Wrap the user query into Gemini-compatible content
         user_content = types.Content(
             role="user",
             parts=[types.Part.from_text(text=query)]
         )
 
-        # Stream the model responses asynchronously
         async for event in self._runner.run_async(
             user_id=self._user_id,
             session_id=session_id,
             new_message=user_content,
         ):
-            print_json_response(event, "=====NEW EVENT=====")
-            # If this is the final response from the model
-            if event.is_final_response:
+            if event.is_final_response():
                 final_response = ""
 
-                # Extract text from the last part of the response
-                if event.content and event.content.parts and event.content.parts[-1].text:
-                    final_response = event.content.parts[-1].text
+                if event.content and event.content.parts:
+                    final_response = "".join(
+                        p.text for p in event.content.parts if p.text
+                    )
 
-                # Send final result to caller
                 yield {
                     'is_task_complete': True,
                     'content': final_response
                 }
-
-            # If the agent is still processing
             else:
                 yield {
                     'is_task_complete': False,
-                    'updates': "agent is processing your request.... "
+                    'updates': "agent is processing your request..."
                 }

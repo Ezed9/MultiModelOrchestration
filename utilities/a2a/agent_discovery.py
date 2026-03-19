@@ -1,10 +1,17 @@
 import os
 import json
+import asyncio
+import logging
 from typing import List
+from urllib.parse import urlparse
 from a2a.types import AgentCard
 from a2a.client import A2ACardResolver
 
 import httpx
+
+logger = logging.getLogger(__name__)
+
+_ALLOWED_URL_SCHEMES = {"http", "https"}
 
 
 class AgentDiscovery:
@@ -14,7 +21,6 @@ class AgentDiscovery:
     """
 
     def __init__(self, registry_file: str = None):
-        # Set registry file path
         if registry_file:
             self.registry_file = registry_file
         else:
@@ -23,14 +29,12 @@ class AgentDiscovery:
                 "agent_registry.json"
             )
 
-        # Load base URLs
         self.base_urls = self._load_registry()
 
     def _load_registry(self) -> List[str]:
         """
-        Load and parse the registry JSON file into a list of URLs
+        Load and validate agent URLs from the registry JSON file.
         """
-
         try:
             with open(self.registry_file, "r") as f:
                 data = json.load(f)
@@ -38,39 +42,55 @@ class AgentDiscovery:
             if not isinstance(data, list):
                 raise ValueError("Registry file must contain a list of URLs")
 
-            return data
+            validated = []
+            for entry in data:
+                if not isinstance(entry, str):
+                    logger.warning("Registry entry is not a string (skipping): %r", entry)
+                    continue
+                scheme = urlparse(entry).scheme
+                if scheme not in _ALLOWED_URL_SCHEMES:
+                    logger.warning(
+                        "Registry URL has disallowed scheme '%s' (skipping): %s",
+                        scheme, entry
+                    )
+                    continue
+                validated.append(entry)
+
+            return validated
 
         except FileNotFoundError:
-            print(f"Registry file not found: {self.registry_file}")
-            return []
+            raise FileNotFoundError(
+                f"Agent registry file not found: {self.registry_file}. "
+                "Check that the file exists and the path is correct."
+            )
 
         except json.JSONDecodeError:
-            print("Registry file contains invalid JSON")
+            logger.error("Registry file contains invalid JSON: %s", self.registry_file)
             return []
 
         except Exception as e:
-            print(f"Error loading registry file: {e}")
+            logger.error("Error loading registry file: %s", e)
             return []
 
     async def list_agent_cards(self) -> List[AgentCard]:
         """
-        Query each base URL to retrieve its agent card.
+        Concurrently query each base URL to retrieve its agent card.
         """
 
-        cards: List[AgentCard] = []
+        async def fetch_card(base_url: str, client: httpx.AsyncClient) -> AgentCard | None:
+            try:
+                resolver = A2ACardResolver(
+                    base_url=base_url.rstrip("/"),
+                    httpx_client=client
+                )
+                return await resolver.get_agent_card()
+            except Exception as e:
+                logger.warning("Failed to fetch agent card from %s: %s", base_url, e)
+                return None
 
-        async with httpx.AsyncClient(timeout=300.0) as httpx_client:
-            for base_url in self.base_urls:   # ✅ FIXED name
-                try:
-                    resolver = A2ACardResolver(
-                        base_url=base_url.rstrip("/"),
-                        httpx_client=httpx_client
-                    )
+        async with httpx.AsyncClient(timeout=30.0) as httpx_client:
+            results = await asyncio.gather(
+                *[fetch_card(url, httpx_client) for url in self.base_urls]
+            )
 
-                    card = await resolver.get_agent_card()
-                    cards.append(card)
-
-                except Exception as e:
-                    print(f"Failed to fetch agent card from {base_url}: {e}")
-
-        return cards
+        return [card for card in results if card is not None]

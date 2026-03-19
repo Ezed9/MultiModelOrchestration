@@ -1,5 +1,6 @@
-from typing import AsyncIterable
+from typing import AsyncGenerator
 from uuid import uuid4
+import asyncio
 
 from utilities.a2a.agent_discovery import AgentDiscovery
 from utilities.a2a.agent_connector import AgentConnector
@@ -27,25 +28,28 @@ class HostAgent:
     """
 
     def __init__(self):
-        # Load instructions
         self.system_instruction = load_instructions_file(
             "agents/host_agent/instructions.txt"
         )
+        if not self.system_instruction:
+            raise RuntimeError("agents/host_agent/instructions.txt is missing or empty")
 
         self.description = load_instructions_file(
             "agents/host_agent/description.txt"
         )
+        if not self.description:
+            raise RuntimeError("agents/host_agent/description.txt is missing or empty")
 
-        # IDs
         self._user_id = "host_agent_user"
+        # Stored per-invoke so _delegate_task can reuse the caller's session
+        self._current_session_id: str | None = None
 
-        # Services
         self.agent_discovery = AgentDiscovery()
         self.mcp_connector = MCPConnect()
 
-        # Will be built lazily
         self._agent = None
         self._runner = None
+        self._init_lock = asyncio.Lock()
 
     # ---------------- TOOLS ---------------- #
 
@@ -67,46 +71,58 @@ class HostAgent:
 
         connector = AgentConnector(agent_card=matched)
 
+        # Reuse the caller's session so downstream agents share conversation context
+        session_id = self._current_session_id or str(uuid4())
+
         return await connector.send_task(
             message=message,
-            session_id=str(uuid4())
+            session_id=session_id
         )
 
     # ---------------- BUILD ---------------- #
 
     async def _init_agent(self):
-        """Proper async-safe builder"""
+        """Async-safe lazy initializer, guarded by a lock to prevent concurrent init."""
+        async with self._init_lock:
+            # Another coroutine may have finished init while we waited on the lock
+            if self._agent is not None:
+                return
 
-        await self.mcp_connector.load_all_tools()
-        mcp_tools = self.mcp_connector.get_tools()
+            await self.mcp_connector.load_all_tools()
+            mcp_tools = self.mcp_connector.get_tools()
 
-        self._agent = LlmAgent(
-            name="host_agent",
-            model="gemini-2.5-flash",
-            instruction=self.system_instruction,
-            description=self.description,
-            tools=[
-                FunctionTool(self._delegate_task),
-                FunctionTool(self._list_agents),
-                *mcp_tools
-            ]
-        )
+            agent = LlmAgent(
+                name="host_agent",
+                model="gemini-2.5-flash",
+                instruction=self.system_instruction,
+                description=self.description,
+                tools=[
+                    FunctionTool(self._delegate_task),
+                    FunctionTool(self._list_agents),
+                    *mcp_tools
+                ]
+            )
 
-        self._runner = Runner(
-            app_name=self._agent.name,
-            agent=self._agent,
-            artifact_service=InMemoryArtifactService(),
-            session_service=InMemorySessionService(),
-            memory_service=InMemoryMemoryService(),
-        )
+            runner = Runner(
+                app_name=agent.name,
+                agent=agent,
+                artifact_service=InMemoryArtifactService(),
+                session_service=InMemorySessionService(),
+                memory_service=InMemoryMemoryService(),
+            )
+
+            # Assign together so both are always set or neither is
+            self._agent = agent
+            self._runner = runner
 
     # ---------------- INVOKE ---------------- #
 
-    async def invoke(self, query: str, session_id: str) -> AsyncIterable[dict]:
+    async def invoke(self, query: str, session_id: str) -> AsyncGenerator[dict, None]:
 
-        # ✅ Lazy initialize async things
         if self._agent is None or self._runner is None:
             await self._init_agent()
+
+        self._current_session_id = session_id
 
         session = await self._runner.session_service.get_session(
             app_name=self._agent.name,
@@ -131,15 +147,13 @@ class HostAgent:
             session_id=session_id,
             new_message=user_content,
         ):
-            if event.is_final_response:
+            if event.is_final_response():
                 final_response = ""
 
-                if (
-                    event.content and
-                    event.content.parts and
-                    event.content.parts[-1].text
-                ):
-                    final_response = event.content.parts[-1].text
+                if event.content and event.content.parts:
+                    final_response = "".join(
+                        p.text for p in event.content.parts if p.text
+                    )
 
                 yield {
                     "is_task_complete": True,
@@ -149,4 +163,4 @@ class HostAgent:
                 yield {
                     "is_task_complete": False,
                     "updates": "agent is processing your request..."
-                } 
+                }

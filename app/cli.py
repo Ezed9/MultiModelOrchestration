@@ -17,13 +17,11 @@ async def cli(agent: str, session: str):
     and display the responses
     """
 
-    # ✅ Correct session ID logic
     session_id = uuid4().hex if str(session) == "0" else session
 
     print(f"Using session ID: {session_id}")
 
     async with httpx.AsyncClient(timeout=300.0) as httpx_client:
-        # ✅ Resolve agent card ONCE
         try:
             resolver = A2ACardResolver(
                 base_url=agent.rstrip("/"),
@@ -42,18 +40,15 @@ async def cli(agent: str, session: str):
                     "\nWhat do you want to send to the agent? (type ':q' or 'quit' to exit)"
                 )
 
-                # Exit condition
                 if prompt.strip().lower() in ["quit", ":q"]:
                     break
 
-                # ✅ Send task using shared client
                 result = await connector.send_task(
                     message=prompt,
                     session_id=session_id,
                     httpx_client=httpx_client
                 )
 
-                # ✅ Print result
                 print(f"\nAgent Response:\n{result}")
 
             except click.Abort:

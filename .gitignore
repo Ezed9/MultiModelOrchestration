@@ -52,8 +52,5 @@ htmlcov/
 *.tmp
 *.bak
 *.cache
-
-# Debug files
-debug_*.py
-test_*.py
-check_*.py
+.tmp/
+.pytest_cache/
