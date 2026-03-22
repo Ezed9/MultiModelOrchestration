@@ -15,7 +15,7 @@ This project uses `uv` as the package manager.
 uv sync
 
 # Start services (each in a separate terminal, in this order):
-uv run python3 -m mcp.servers.streamable_http_server     # MCP arithmetic server on :3000
+uv run python3 -m mcp_servers.servers.streamable_http_server     # MCP arithmetic server on :3000
 uv run python3 -m agents.website_builder_simple          # Website builder agent on :10000
 uv run python3 -m agents.host_agent                      # Host/orchestrator agent on :11000
 uv run python3 -m app --agent http://localhost:11000 --session 0           # CLI client
@@ -35,8 +35,8 @@ The system has three layers:
 
 **3. Specialist Agents + MCP Tools**
 - **Website Builder** (`agents/website_builder_simple/`, port 10000) — generates HTML/CSS/JS
-- **Terminal MCP Server** (`mcp/servers/terminal_server/`) — runs shell commands via stdio
-- **Arithmetic MCP Server** (`mcp/servers/streamable_http_server.py`, port 3000) — HTTP-based math tools
+- **Terminal MCP Server** (`mcp_servers/servers/terminal_server/`) — runs shell commands via stdio
+- **Arithmetic MCP Server** (`mcp_servers/servers/streamable_http_server.py`, port 3000) — HTTP-based math tools
 
 ### Data Flow
 

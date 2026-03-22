@@ -5,6 +5,7 @@ import asyncio
 from utilities.a2a.agent_discovery import AgentDiscovery
 from utilities.a2a.agent_connector import AgentConnector
 from utilities.common.file_loader import load_instructions_file
+from utilities.skills import SkillSearch
 
 from google.adk.agents import LlmAgent
 from google.adk import Runner
@@ -46,6 +47,7 @@ class HostAgent:
 
         self.agent_discovery = AgentDiscovery()
         self.mcp_connector = MCPConnect()
+        self.skill_search = SkillSearch()
 
         self._agent = None
         self._runner = None
@@ -79,6 +81,39 @@ class HostAgent:
             session_id=session_id
         )
 
+    async def _list_skills(self) -> list[dict]:
+        """List all available skills with their names and descriptions."""
+        skills = self.skill_search.list_all()
+        return [
+            {"name": skill.name, "description": skill.description}
+            for skill in skills
+        ]
+
+    async def _invoke_skill(self, skill_name: str, user_context: str = "") -> str:
+        """
+        Invoke a skill by name. The skill instructions will guide your actions.
+        
+        Args:
+            skill_name: Name of the skill to invoke (e.g., "build-landing-page")
+            user_context: Additional context or requirements from the user
+            
+        Returns:
+            Instructions for how to execute this skill, which you should follow.
+        """
+        skill = self.skill_search.search_by_name(skill_name)
+        
+        if not skill:
+            available = self.skill_search.list_all()
+            skill_names = [s.name for s in available]
+            return f"Skill '{skill_name}' not found. Available skills: {', '.join(skill_names)}"
+        
+        # Return the skill instructions for the agent to follow
+        response = f"[Executing skill: {skill.name}]\n\n"
+        response += f"Instructions to follow:\n{skill.instructions}\n\n"
+        if user_context:
+            response += f"User context: {user_context}"
+        return response
+
     # ---------------- BUILD ---------------- #
 
     async def _init_agent(self):
@@ -91,14 +126,24 @@ class HostAgent:
             await self.mcp_connector.load_all_tools()
             mcp_tools = self.mcp_connector.get_tools()
 
+            # Load skills and build skill awareness for system prompt
+            skills = self.skill_search.list_all()
+            skill_info = ""
+            if skills:
+                skill_info = "\n\nAvailable skills (invoke with _invoke_skill or _list_skills):\n"
+                for skill in skills:
+                    skill_info += f"- {skill.name}: {skill.description}\n"
+
             agent = LlmAgent(
                 name="host_agent",
                 model="gemini-2.5-flash",
-                instruction=self.system_instruction,
+                instruction=self.system_instruction + skill_info,
                 description=self.description,
                 tools=[
                     FunctionTool(self._delegate_task),
                     FunctionTool(self._list_agents),
+                    FunctionTool(self._list_skills),
+                    FunctionTool(self._invoke_skill),
                     *mcp_tools
                 ]
             )

@@ -6,6 +6,38 @@ import asyncclick as click
 import httpx
 
 from utilities.a2a.agent_connector import AgentConnector
+from utilities.skills import SkillSearch
+
+
+def parse_slash_command(message: str) -> tuple[str, str] | None:
+    """
+    Parse a slash command from user input.
+    
+    Returns:
+        Tuple of (skill_name, remaining_args) if message starts with /
+        None if not a slash command
+    """
+    message = message.strip()
+    if not message.startswith("/"):
+        return None
+    
+    # Remove leading slash and split on first space
+    parts = message[1:].split(maxsplit=1)
+    skill_name = parts[0] if parts else ""
+    remaining = parts[1] if len(parts) > 1 else ""
+    
+    return (skill_name, remaining)
+
+
+def format_skill_message(skill_name: str, instructions: str, user_args: str) -> str:
+    """
+    Format a message that includes skill instructions for the Host Agent.
+    """
+    message = f"[SKILL: {skill_name}]\n\n"
+    message += f"Follow these instructions:\n{instructions}\n\n"
+    if user_args:
+        message += f"User request: {user_args}"
+    return message
 
 
 @click.command()
@@ -14,12 +46,16 @@ from utilities.a2a.agent_connector import AgentConnector
 async def cli(agent: str, session: str):
     """
     CLI to send user messages to an A2A agent using an A2A client
-    and display the responses
+    and display the responses.
+    
+    Supports slash commands to invoke skills (e.g., /build-landing-page).
     """
 
     session_id = uuid4().hex if str(session) == "0" else session
+    skill_search = SkillSearch()
 
     print(f"Using session ID: {session_id}")
+    print("Tip: Use /skill-name to invoke a skill (e.g., /list-capabilities)")
 
     async with httpx.AsyncClient(timeout=300.0) as httpx_client:
         try:
@@ -42,6 +78,28 @@ async def cli(agent: str, session: str):
 
                 if prompt.strip().lower() in ["quit", ":q"]:
                     break
+
+                # Check for slash command
+                slash_cmd = parse_slash_command(prompt)
+                if slash_cmd:
+                    skill_name, user_args = slash_cmd
+                    skill = skill_search.search_by_name(skill_name)
+                    
+                    if not skill:
+                        # Show available skills
+                        available = skill_search.list_all()
+                        print(f"\nUnknown skill: /{skill_name}")
+                        if available:
+                            print("Available skills:")
+                            for s in available:
+                                print(f"  /{s.name} — {s.description[:60]}...")
+                        else:
+                            print("No skills available.")
+                        continue
+                    
+                    # Inject skill instructions into message
+                    prompt = format_skill_message(skill.name, skill.instructions, user_args)
+                    print(f"\n[Invoking skill: {skill.name}]")
 
                 result = await connector.send_task(
                     message=prompt,
