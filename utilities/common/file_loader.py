@@ -1,16 +1,26 @@
+"""
+File loader utilities.
+"""
+
+import logging
 import os
+
+logger = logging.getLogger(__name__)
+
 
 def load_instructions_file(filename: str, default: str = "") -> str:
     """
-    Load instructions from a file. If the file does not exist,
-    return the default instructions.
-
+    Load instructions from a file.
+    
     Args:
-        filename (str): Path to the instructions file
-        default (str): Default instructions if file is not found
-
+        filename: Path to the instructions file
+        default: Default value if file cannot be loaded
+        
     Returns:
-        str: The content of the instructions file or the default value
+        The content of the instructions file or the default value
+        
+    Note:
+        Returns default (not raises) on error to allow graceful degradation.
     """
     if not filename:
         return default
@@ -18,8 +28,14 @@ def load_instructions_file(filename: str, default: str = "") -> str:
     try:
         if os.path.exists(filename):
             with open(filename, "r", encoding="utf-8") as file:
-                return file.read()
-    except Exception as e:
-        print(f"Error loading instructions file: {e}")
+                content = file.read()
+                logger.debug(f"Loaded instructions from: {filename}")
+                return content
+        else:
+            logger.warning(f"Instructions file not found: {filename}")
+    except IOError as e:
+        logger.error(f"Failed to read instructions file {filename}: {e}")
+    except UnicodeDecodeError as e:
+        logger.error(f"Encoding error in {filename}: {e}")
 
     return default
