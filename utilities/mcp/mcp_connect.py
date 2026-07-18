@@ -3,12 +3,14 @@ MCP (Model Context Protocol) server connection and tool loading.
 """
 
 import logging
-from utilities.mcp.mcp_discovery import MCPDiscovery
-from utilities.config import MCP_SERVER_TIMEOUT
-from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset
+
 from google.adk.tools.mcp_tool import StdioConnectionParams
 from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
+from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset
 from mcp import StdioServerParameters
+
+from utilities.config import MCP_SERVER_TIMEOUT
+from utilities.mcp.mcp_discovery import MCPDiscovery
 
 logger = logging.getLogger(__name__)
 
@@ -73,12 +75,13 @@ class MCPConnect:
         """
         command = server.get("command")
         args = server.get("args", [])
-        transport_type = server.get("type", "")
+        transport_type = server.get("type", "stdio")
 
-        if transport_type == "streamable_http" or command == "streamable_http":
-            if not args:
-                raise ValueError(f"Server '{name}' requires a URL in 'args'")
-            conn = StreamableHTTPConnectionParams(url=args[0])
+        if transport_type == "streamable_http":
+            url = server.get("url")
+            if not url:
+                raise ValueError(f"Server '{name}' requires a 'url' field")
+            conn = StreamableHTTPConnectionParams(url=url)
         else:
             if not command:
                 raise ValueError(f"Server '{name}' is missing 'command' field")

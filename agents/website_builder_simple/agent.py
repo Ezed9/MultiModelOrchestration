@@ -5,9 +5,11 @@ A simple agent that generates HTML, CSS, and JavaScript for web pages.
 """
 
 import logging
-from utilities.common.base_agent import BaseAgent
 
 from dotenv import load_dotenv
+
+from utilities.common.base_agent import BaseAgent
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)

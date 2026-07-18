@@ -7,11 +7,11 @@ from typing import Any
 from uuid import uuid4
 
 import httpx
-from a2a.types import AgentCard, SendMessageRequest, MessageSendParams
 from a2a.client import A2AClient
+from a2a.client.errors import A2AClientError, A2AClientHTTPError, A2AClientTimeoutError
+from a2a.types import AgentCard, MessageSendParams, SendMessageRequest
 
 from utilities.config import AGENT_EXECUTION_TIMEOUT
-from utilities.types import SendMessagePayload
 
 logger = logging.getLogger(__name__)
 
@@ -78,21 +78,26 @@ class AgentConnector:
             params=MessageSendParams(**send_message_payload)
         )
 
+        # The a2a-sdk transport wraps all httpx errors into A2AClientError
+        # subclasses, so catching httpx exceptions here would never fire.
         try:
             logger.debug(f"Sending message to agent: {self.agent_card.name}")
             response = await a2a_client.send_message(request=request)
-        except httpx.TimeoutException as e:
+        except A2AClientTimeoutError as e:
             logger.error(f"Timeout contacting agent {self.agent_card.name}: {e}")
-            return f"Error: Request timed out after {AGENT_EXECUTION_TIMEOUT}s"
-        except httpx.ConnectError as e:
-            logger.error(f"Connection failed to agent {self.agent_card.name}: {e}")
-            return f"Error: Could not connect to agent - is it running?"
-        except httpx.HTTPStatusError as e:
+            return (
+                f"Error: Request to agent '{self.agent_card.name}' "
+                f"timed out after {AGENT_EXECUTION_TIMEOUT}s"
+            )
+        except A2AClientHTTPError as e:
             logger.error(f"HTTP error from agent {self.agent_card.name}: {e}")
-            return f"Error: Agent returned HTTP {e.response.status_code}"
-        except httpx.HTTPError as e:
-            logger.error(f"Network error contacting agent {self.agent_card.name}: {e}")
-            return f"Network error contacting agent: {e}"
+            return (
+                f"Error: Could not reach agent '{self.agent_card.name}' "
+                f"(HTTP {e.status_code}) - is it running?"
+            )
+        except A2AClientError as e:
+            logger.error(f"A2A client error contacting agent {self.agent_card.name}: {e}")
+            return f"Error contacting agent '{self.agent_card.name}': {e}"
 
         return self._extract_response(response)
 

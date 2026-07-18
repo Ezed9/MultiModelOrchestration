@@ -5,7 +5,9 @@ All configurable values should be defined here and imported elsewhere.
 Values can be overridden via environment variables.
 """
 
+import logging
 import os
+from pathlib import Path
 from typing import Final
 
 # ---------------------------------------------------------------------------
@@ -25,16 +27,6 @@ AGENT_EXECUTION_TIMEOUT: Final[float] = float(
 MCP_SERVER_TIMEOUT: Final[float] = float(
     os.getenv("MCP_SERVER_TIMEOUT", "5.0")
 )
-TERMINAL_COMMAND_TIMEOUT: Final[int] = int(
-    os.getenv("TERMINAL_COMMAND_TIMEOUT", "30")
-)
-
-# ---------------------------------------------------------------------------
-# HTTP Client Configuration
-# ---------------------------------------------------------------------------
-HTTP_MAX_CONNECTIONS: Final[int] = int(
-    os.getenv("HTTP_MAX_CONNECTIONS", "100")
-)
 
 # ---------------------------------------------------------------------------
 # Logging Configuration
@@ -45,23 +37,29 @@ LOG_FORMAT: Final[str] = os.getenv(
     "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
+
+def configure_logging() -> None:
+    """Configure root logging for an application entrypoint."""
+    logging.basicConfig(level=LOG_LEVEL, format=LOG_FORMAT)
+
+
 # ---------------------------------------------------------------------------
 # Path Configuration
 # ---------------------------------------------------------------------------
-PROJECT_ROOT: Final[str] = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 
 
-def get_agent_registry_path() -> str:
+def get_agent_registry_path() -> Path:
     """Get the path to the agent registry file."""
     env_path = os.getenv("AGENT_REGISTRY_FILE")
     if env_path:
-        return env_path
-    return os.path.join(PROJECT_ROOT, "utilities", "a2a", "agent_registry.json")
+        return Path(env_path)
+    return PROJECT_ROOT / "utilities" / "a2a" / "agent_registry.json"
 
 
-def get_mcp_config_path() -> str:
+def get_mcp_config_path() -> Path:
     """Get the path to the MCP config file."""
     env_path = os.getenv("MCP_CONFIG_FILE")
     if env_path:
-        return env_path
-    return os.path.join(PROJECT_ROOT, "utilities", "mcp", "mcp_config.json")
+        return Path(env_path)
+    return PROJECT_ROOT / "utilities" / "mcp" / "mcp_config.json"

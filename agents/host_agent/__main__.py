@@ -1,11 +1,12 @@
-import uvicorn
-from a2a.types import AgentSkill, AgentCard, AgentCapabilities
 import click
+import uvicorn
+from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.tasks import InMemoryTaskStore
+from a2a.types import AgentCapabilities, AgentCard, AgentSkill
 
 from agents.host_agent.agent_executor import HostAgentExecutor
-from a2a.server.tasks import InMemoryTaskStore
-from a2a.server.apps import A2AStarletteApplication
+from utilities.config import configure_logging
 
 
 @click.command()
@@ -13,6 +14,7 @@ from a2a.server.apps import A2AStarletteApplication
 @click.option('--port', default=11000, type=int, help='Port for the agent server')
 def main(host: str, port: int):
     """Main function to run the Host Agent"""
+    configure_logging()
 
     # Define Host Agent skill
     skill = AgentSkill(

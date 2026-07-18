@@ -1,13 +1,14 @@
-import os
-import json
 import asyncio
+import json
 import logging
-from typing import List
+from pathlib import Path
 from urllib.parse import urlparse
-from a2a.types import AgentCard
-from a2a.client import A2ACardResolver
 
 import httpx
+from a2a.client import A2ACardResolver
+from a2a.types import AgentCard
+
+from utilities.config import AGENT_DISCOVERY_TIMEOUT, get_agent_registry_path
 
 logger = logging.getLogger(__name__)
 
@@ -17,27 +18,19 @@ _ALLOWED_URL_SCHEMES = {"http", "https"}
 class AgentDiscovery:
     """
     Discovers A2A Agents by reading a registry file of URLs and
-    querying each one's /.well-known/agent.json endpoint to retrieve an AgentCard.
+    querying each one's agent-card endpoint to retrieve an AgentCard.
     """
 
-    def __init__(self, registry_file: str = None):
-        if registry_file:
-            self.registry_file = registry_file
-        else:
-            self.registry_file = os.path.join(
-                os.path.dirname(__file__),
-                "agent_registry.json"
-            )
-
+    def __init__(self, registry_file: str | Path | None = None):
+        self.registry_file = Path(registry_file) if registry_file else get_agent_registry_path()
         self.base_urls = self._load_registry()
 
-    def _load_registry(self) -> List[str]:
+    def _load_registry(self) -> list[str]:
         """
         Load and validate agent URLs from the registry JSON file.
         """
         try:
-            with open(self.registry_file, "r") as f:
-                data = json.load(f)
+            data = json.loads(self.registry_file.read_text())
 
             if not isinstance(data, list):
                 raise ValueError("Registry file must contain a list of URLs")
@@ -58,11 +51,11 @@ class AgentDiscovery:
 
             return validated
 
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             raise FileNotFoundError(
                 f"Agent registry file not found: {self.registry_file}. "
                 "Check that the file exists and the path is correct."
-            )
+            ) from e
 
         except json.JSONDecodeError:
             logger.error("Registry file contains invalid JSON: %s", self.registry_file)
@@ -72,7 +65,7 @@ class AgentDiscovery:
             logger.error("Error loading registry file: %s", e)
             return []
 
-    async def list_agent_cards(self) -> List[AgentCard]:
+    async def list_agent_cards(self) -> list[AgentCard]:
         """
         Concurrently query each base URL to retrieve its agent card.
         """
@@ -88,7 +81,7 @@ class AgentDiscovery:
                 logger.warning("Failed to fetch agent card from %s: %s", base_url, e)
                 return None
 
-        async with httpx.AsyncClient(timeout=30.0) as httpx_client:
+        async with httpx.AsyncClient(timeout=AGENT_DISCOVERY_TIMEOUT) as httpx_client:
             results = await asyncio.gather(
                 *[fetch_card(url, httpx_client) for url in self.base_urls]
             )

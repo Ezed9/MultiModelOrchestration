@@ -1,71 +1,40 @@
-import os
 import json
-from typing import Dict, Any
+from pathlib import Path
+from typing import Any
+
+from utilities.config import get_mcp_config_path
+
 
 class MCPDiscovery:
     """
-    Reads a JSON config file defining MCP servers
-    and provides access to the server definitions
-    under the "mcpServers" key.
-
-    Attributes:
-        config_file (str): Path to the JSON config file.
-        config (Dict[str, Any]): Parsed JSON content expected
-                                 to contain the "mcpServers" key.
+    Reads a JSON config file defining MCP servers and provides access
+    to the server definitions under the "mcpServers" key.
     """
 
-    def __init__(self, config_file: str = None):
-        """
-        Initializes the MCPDiscovery with a config file.
-
-        Args:
-            config_file (str, optional): Path to the JSON config file.
-                                         If None, defaults to 'mcp_config.json'
-                                         located in the same directory.
-        """
-        if config_file is None:
-            self.config_file = os.path.join(
-                os.path.dirname(__file__),
-                "mcp_config.json"
-            )
-        else:
-            self.config_file = config_file
-
+    def __init__(self, config_file: str | Path | None = None):
+        self.config_file = Path(config_file) if config_file else get_mcp_config_path()
         self.config = self._load_config()
 
-    def _load_config(self) -> Dict[str, Any]:
-        """
-        Loads and parses the configuration file.
-
-        Returns:
-            Dict[str, Any]: Parsed JSON content.
-
-        Raises:
-            ValueError: If JSON is not a dictionary.
-            FileNotFoundError: If config file doesn't exist.
-            RuntimeError: For any other read/parse errors.
-        """
+    def _load_config(self) -> dict[str, Any]:
         try:
-            with open(self.config_file, 'r') as f:
-                data = json.load(f)
+            data = json.loads(self.config_file.read_text())
 
-                if not isinstance(data, dict):
-                    raise ValueError(f"Invalid config format in {self.config_file}")
+            if not isinstance(data, dict):
+                raise ValueError(f"Invalid config format in {self.config_file}")
 
-                return data
+            return data
 
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Config file {self.config_file} not found.")
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f"Config file {self.config_file} not found.") from e
 
         except Exception as e:
-            raise RuntimeError(f"Error reading configuration file {self.config_file}: {e}")
+            raise RuntimeError(
+                f"Error reading configuration file {self.config_file}: {e}"
+            ) from e
 
-    def list_servers(self) -> Dict[str, Any]:
+    def list_servers(self) -> dict[str, Any]:
         """
-        Returns the MCP servers defined in the configuration file.
-
-        Returns:
-            Dict[str, Any]: The content of the "mcpServers" key from the config.
+        Returns the MCP servers defined under the "mcpServers" config key.
 
         Raises:
             KeyError: If "mcpServers" key is not found in the configuration.

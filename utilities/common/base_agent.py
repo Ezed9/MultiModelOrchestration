@@ -6,13 +6,13 @@ Reduces code duplication across agent implementations.
 
 import asyncio
 import logging
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
-from google.adk.agents import LlmAgent
 from google.adk import Runner
+from google.adk.agents import LlmAgent
 from google.adk.artifacts import InMemoryArtifactService
-from google.adk.sessions import InMemorySessionService
 from google.adk.memory.in_memory_memory_service import InMemoryMemoryService
+from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
 from utilities.common.file_loader import load_instructions_file

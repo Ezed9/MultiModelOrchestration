@@ -71,7 +71,7 @@ class SkillLoader:
                 if skill:
                     self._skills.append(skill)
                     logger.info(f"Loaded skill: {skill.name}")
-            except IOError as e:
+            except OSError as e:
                 logger.error(f"Failed to read skill file '{file_path.name}': {e}")
             except Exception as e:
                 logger.error(f"Error parsing skill from '{file_path.name}': {e}", exc_info=True)

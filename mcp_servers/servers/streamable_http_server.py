@@ -1,5 +1,12 @@
+import logging
+import os
+
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field
+
+# Self-contained on purpose: run as a script, so the project root is not
+# importable; logging is configured from the environment directly.
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 
 class ArithmeticInput(BaseModel):
     """Input model: two numbers to add."""

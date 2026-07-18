@@ -4,8 +4,8 @@ Host Agent Executor.
 Bridges the HostAgent (orchestrator) with the A2A protocol.
 """
 
-from utilities.a2a.base_agent_executor import BaseAgentExecutor
 from agents.host_agent.agent import HostAgent
+from utilities.a2a.base_agent_executor import BaseAgentExecutor
 
 
 class HostAgentExecutor(BaseAgentExecutor):

@@ -1,6 +1,7 @@
 {
   "mcpServers": {
     "terminal_server": {
+      "type": "stdio",
       "command": "uv",
       "args": [
         "--directory", "mcp_servers/servers/terminal_server",
@@ -9,10 +10,8 @@
       ]
     },
     "arithmetic_server": {
-      "command": "streamable_http",
-      "args": [
-        "http://localhost:3000/mcp/"
-      ]
+      "type": "streamable_http",
+      "url": "http://localhost:3000/mcp/"
     }
   }
 }

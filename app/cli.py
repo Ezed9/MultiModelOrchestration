@@ -1,11 +1,11 @@
-import asyncio
 from uuid import uuid4
-from a2a.types import AgentCard
-from a2a.client import A2ACardResolver
+
 import asyncclick as click
 import httpx
+from a2a.client import A2ACardResolver
 
 from utilities.a2a.agent_connector import AgentConnector
+from utilities.config import AGENT_EXECUTION_TIMEOUT, configure_logging
 from utilities.skills import SkillSearch
 
 
@@ -51,13 +51,14 @@ async def cli(agent: str, session: str):
     Supports slash commands to invoke skills (e.g., /build-landing-page).
     """
 
+    configure_logging()
     session_id = uuid4().hex if str(session) == "0" else session
     skill_search = SkillSearch()
 
     print(f"Using session ID: {session_id}")
     print("Tip: Use /skill-name to invoke a skill (e.g., /list-capabilities)")
 
-    async with httpx.AsyncClient(timeout=300.0) as httpx_client:
+    async with httpx.AsyncClient(timeout=AGENT_EXECUTION_TIMEOUT) as httpx_client:
         try:
             resolver = A2ACardResolver(
                 base_url=agent.rstrip("/"),
