@@ -66,15 +66,15 @@ The system is divided into **three zones**, connected by A2A and MCP protocols:
            ▼                                      ▼
 ┌────────────────────────┐       ┌──────────────────────────────────┐
 │      MCP Servers  ①   │       │         A2A Agents  ③            │
-│  mcp_servers/servers/  │       │  agents/website_builder_simple/  │
-│                        │       │  (port 10000)                    │
-│  • terminal_server     │       │                                  │
-│    (stdio)             │       │  ┌────────────────────────────┐  │
-│    Run shell commands  │       │  │  A2A Server + Orchestrator  │  │
-│                        │       │  │  Remote Agent n            │  │
-│  • arithmetic_server   │       │  └────────────────────────────┘  │
-│    (HTTP, port 3000)   │       │                                  │
-│    Math operations     │       │  Generates HTML/CSS/JS pages     │
+│  mcp_servers/servers/  │       │                                  │
+│                        │       │  • website_builder_simple        │
+│  • terminal_server     │       │    (port 10000)                  │
+│    (stdio, sandboxed)  │       │    Generates HTML/CSS/JS pages   │
+│    Run shell commands  │       │                                  │
+│                        │       │  • content_writer                │
+│  • arithmetic_server   │       │    (port 10001)                  │
+│    (HTTP, port 3000)   │       │    Copy, taglines, summaries     │
+│    Math operations     │       │                                  │
 └────────────────────────┘       └──────────────────────────────────┘
 ```
 
@@ -86,7 +86,7 @@ The diagram numbers identify the **order of system initialization and request fl
 |------|-----------|-------------|
 | **① MCP Servers** | `mcp_servers/servers/` | Remote MCP tool servers start up (terminal via stdio, arithmetic via HTTP) |
 | **② MCP config.json** | `utilities/mcp/mcp_config.json` | Host Agent reads this config to discover and connect to MCP servers via `MCP Connector` |
-| **③ Remote A2A Agents** | `agents/website_builder_simple/` | Specialist A2A agents start up with their own A2A Server + Orchestrator |
+| **③ Remote A2A Agents** | `agents/website_builder_simple/`, `agents/content_writer/` | Specialist A2A agents start up with their own A2A Server + Orchestrator |
 | **④ Agent Registry** | `utilities/a2a/agent_registry.json` | Host Agent reads this registry to discover remote A2A agents via `Agent Connector` |
 | **⑤ Host Agent** | `agents/host_agent/` (port 11000) | Central orchestrator — routes tasks to MCP tools or A2A agents based on intent |
 | **⑥ App Frontend** | `app/cli.py` | User-facing CLI with A2A Client that sends requests to the Host Agent |
@@ -115,11 +115,15 @@ App Frontend (A2A Client)  ──A2A──►  Host Agent / Orchestrator
 - **Agent Orchestration** — A host agent that discovers and delegates tasks to specialist agents
 - **A2A Protocol** — Agent-to-Agent communication over HTTP for task delegation
 - **MCP Integration** — Model Context Protocol for connecting to tool servers (stdio and HTTP)
+- **Two Specialist Agents** — website builder (HTML/CSS/JS) and content writer (copy, summaries)
 - **Skills System** — Markdown-defined workflows invoked via `/slash-commands` or natural language
 - **Interactive CLI** — Terminal-based chat interface with skill support
-- **Extensible** — Easy to add new agents, MCP tools, and skills
-- **Well-Tested** — Comprehensive test suite with 32+ unit tests
-- **Secure** — Command whitelisting and input validation for terminal operations
+- **Extensible** — Adding an agent = a new folder + one registry line; the host discovers the rest
+- **Well-Tested** — 68 unit and integration tests (discovery, routing, MCP loading, failure
+  handling) that run offline in seconds, gated by GitHub Actions CI
+- **One-Command Startup** — `./scripts/start.sh` boots every service in health-checked order
+- **Secure** — Command whitelisting, workspace path sandboxing, and input validation for terminal
+  operations
 
 ## Prerequisites
 
@@ -154,7 +158,18 @@ echo 'GOOGLE_API_KEY="your_api_key_here"' > .env
 
 ### 3. Start the Services
 
-Start components in order, following the numbered workflow (① → ⑥). You need **4 terminals**:
+**One command (recommended):**
+
+```bash
+./scripts/start.sh          # start everything, Ctrl-C stops all services
+./scripts/start.sh --cli    # start everything, then open the CLI
+```
+
+The script starts each service in dependency order and waits for its health
+check before starting the next.
+
+<details>
+<summary><b>Or start manually</b> (5 terminals, in numbered-workflow order ① → ⑥)</summary>
 
 **Terminal 1 — ① MCP Arithmetic Server (port 3000):**
 ```bash
@@ -168,17 +183,24 @@ uv run python3 mcp_servers/servers/streamable_http_server.py
 uv run python3 -m agents.website_builder_simple
 ```
 
-**Terminal 3 — ⑤ Host Agent (port 11000):**
+**Terminal 3 — ③ Content Writer Agent (port 10001):**
+```bash
+uv run python3 -m agents.content_writer
+```
+
+**Terminal 4 — ⑤ Host Agent (port 11000):**
 ```bash
 uv run python3 -m agents.host_agent
 ```
 
-> On startup the Host Agent reads `mcp_config.json` (step ②) and `agent_registry.json` (step ④) to discover all available tools and agents.
+> On startup the Host Agent reads `mcp_config.json` (step ②) and `agent_registry.json` (step ④) to discover all available tools and agents, and injects the discovered agent descriptions into its system prompt.
 
-**Terminal 4 — ⑥ CLI Client:**
+**Terminal 5 — ⑥ CLI Client:**
 ```bash
 uv run python3 -m app --agent http://localhost:11000 --session 0
 ```
+
+</details>
 
 ### 4. Chat with the Agent
 
@@ -194,6 +216,7 @@ Here's what's available in the system:
 
 **Agents:**
 - website_builder_simple: Creates HTML/CSS/JS web pages
+- content_writer: Writes marketing copy, taglines, and summaries
 
 **MCP Tools:**
 - terminal_server: Execute shell commands
@@ -221,7 +244,8 @@ mcp_a2a_project/
 │   │   ├── agent.py
 │   │   ├── agent_executor.py
 │   │   └── __main__.py
-│   └── website_builder_simple/   # ③ Remote A2A Agent (port 10000)
+│   ├── website_builder_simple/   # ③ Remote A2A Agent (port 10000)
+│   └── content_writer/           # ③ Remote A2A Agent (port 10001)
 │
 ├── mcp_servers/
 │   └── servers/                  # ① MCP Tool Servers
@@ -238,36 +262,56 @@ mcp_a2a_project/
 │       ├── mcp_connect.py        #   MCP Client connector
 │       └── mcp_discovery.py      #   Discovers tools from MCP servers
 │
+├── scripts/
+│   └── start.sh                  # One-command startup with health checks
+│
+├── .github/workflows/ci.yml      # CI — ruff + pytest on every push/PR
+│
+├── tests/                        # 68 unit + integration tests (offline, no API key)
+│
 └── skills/                       # Markdown-defined workflow skills
 ```
 
 ## Testing
 
-Run the test suite:
+The suite has **68 unit and integration tests** that run **offline in seconds — no servers, no
+API key required**. External boundaries are mocked (`httpx.MockTransport` for A2A discovery,
+`AsyncMock` for the A2A client and MCP toolsets). Coverage:
+
+| Area | Tests | What's verified |
+|------|-------|-----------------|
+| Agent discovery | `test_agent_discovery.py` | Registry validation, URL-scheme filtering, concurrent card fetching, per-endpoint failure isolation |
+| Task routing | `test_host_agent_routing.py` | `_delegate_task` matching, case-insensitivity, unknown-agent handling, session reuse |
+| A2A connector | `test_agent_connector.py` | Response extraction (status + history fallback), timeout/HTTP/protocol failure handling |
+| MCP loading | `test_mcp_connect.py`, `test_mcp_discovery.py` | Both transports, config validation, one-server-down graceful degradation |
+| Terminal security | `test_terminal_server.py` | Command whitelist, metacharacter blocking, workspace path sandboxing |
+| Config & skills | `test_config.py`, `test_skill_loader.py`, `test_file_loader.py` | Env overrides, path helpers, markdown skill parsing |
 
 ```bash
-# Run all tests
-uv run pytest
-
-# Run with verbose output
-uv run pytest -v
-
-# Run specific test file
-uv run pytest tests/test_terminal_server.py
+uv run pytest        # run all tests
+uv run ruff check .  # lint
 ```
+
+Both run in CI on every push (`.github/workflows/ci.yml`).
 
 ## Configuration
 
 ### Environment Variables
+
+See `.env.example` for a template.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GOOGLE_API_KEY` | (required) | Google AI API key for Gemini |
 | `DEFAULT_MODEL` | `gemini-2.5-flash` | LLM model to use |
 | `AGENT_DISCOVERY_TIMEOUT` | `30.0` | Timeout for agent discovery (seconds) |
-| `AGENT_EXECUTION_TIMEOUT` | `300.0` | Timeout for agent execution (seconds) |
+| `AGENT_EXECUTION_TIMEOUT` | `300.0` | Timeout for agent execution and the CLI client (seconds) |
 | `MCP_SERVER_TIMEOUT` | `5.0` | Timeout for MCP server connections (seconds) |
-| `LOG_LEVEL` | `INFO` | Logging level |
+| `TERMINAL_COMMAND_TIMEOUT` | `30` | Timeout for terminal server commands (seconds) |
+| `LOG_LEVEL` | `INFO` | Logging level for all entrypoints |
+| `LOG_FORMAT` | (see `utilities/config.py`) | Log line format |
+| `AGENT_REGISTRY_FILE` | `utilities/a2a/agent_registry.json` | Override the agent registry path |
+| `MCP_CONFIG_FILE` | `utilities/mcp/mcp_config.json` | Override the MCP config path |
 
 ### Adding a New Agent
 
@@ -285,9 +329,18 @@ Create a markdown file in `skills/` with `# name`, description, and `## Instruct
 ## Security
 
 - **Command Whitelisting**: Terminal server only allows specific commands (ls, cat, git, python, etc.)
+- **Workspace Sandboxing**: Every path argument must resolve inside `~/mcp/workspace` — absolute
+  paths and `../` escapes are rejected, so even whitelisted commands like `rm` cannot touch
+  anything outside the workspace
 - **Input Validation**: Shell metacharacters (`;`, `|`, `&&`, etc.) are blocked
+- **Registry Validation**: Agent registry URLs are restricted to `http`/`https` schemes
 - **Timeout Protection**: All commands have execution time limits
 - **No Shell Expansion**: Commands run with `shell=False` to prevent injection
+
+> **Disclosure**: early in development a `.env` file containing an API key was accidentally
+> committed. The key was revoked and rotated, the file untracked, and the repository history was
+> rewritten with `git-filter-repo` to purge it entirely. Secrets now live only in the untracked
+> `.env` (see `.env.example`).
 
 ## Tech Stack
 

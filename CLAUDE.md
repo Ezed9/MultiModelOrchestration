@@ -11,14 +11,23 @@ Multi-agent orchestration system combining Agent-to-Agent (A2A) protocol with Mo
 This project uses `uv` as the package manager.
 
 ```bash
-# Install dependencies
-uv sync
+# Install dependencies (dev extra includes pytest + ruff)
+uv sync --extra dev
 
-# Start services (each in a separate terminal, in this order):
+# One-command startup (all services, health-check ordered):
+./scripts/start.sh          # start everything, Ctrl-C stops all
+./scripts/start.sh --cli    # start everything, then open the CLI
+
+# Or start services manually (each in a separate terminal, in this order):
 uv run python3 mcp_servers/servers/streamable_http_server.py  # MCP arithmetic server on :3000
 uv run python3 -m agents.website_builder_simple               # Website builder agent on :10000
+uv run python3 -m agents.content_writer                       # Content writer agent on :10001
 uv run python3 -m agents.host_agent                           # Host/orchestrator agent on :11000
 uv run python3 -m app --agent http://localhost:11000 --session 0  # CLI client
+
+# Test and lint
+uv run pytest
+uv run ruff check .
 ```
 
 ## Architecture
@@ -36,14 +45,16 @@ The system has three layers:
 
 **3. Specialist Agents + MCP Tools + Skills**
 - **Website Builder** (`agents/website_builder_simple/`, port 10000) — generates HTML/CSS/JS
-- **Terminal MCP Server** (`mcp_servers/servers/terminal_server/`) — runs shell commands via stdio
+- **Content Writer** (`agents/content_writer/`, port 10001) — marketing copy, taglines, summaries
+- **Terminal MCP Server** (`mcp_servers/servers/terminal_server/`) — runs whitelisted, workspace-sandboxed shell commands via stdio
 - **Arithmetic MCP Server** (`mcp_servers/servers/streamable_http_server.py`, port 3000) — HTTP-based math tools
 - **Skills** (`skills/`) — markdown-defined workflows (list-capabilities, build-landing-page, run-command, quick-math)
 
 ### Data Flow
 
 ```
-User → CLI → Host Agent (A2A) → delegates to → Website Builder Agent (A2A)
+User → CLI → Host Agent (A2A) → delegates to → Specialist Agents (A2A):
+                              →                website_builder_simple, content_writer
                               → calls → MCP tools (terminal, arithmetic)
                               → executes → Skills (markdown workflows)
 ```
