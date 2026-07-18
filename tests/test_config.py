@@ -3,7 +3,6 @@ Tests for utilities/config.py
 """
 
 import os
-import pytest
 from unittest.mock import patch
 
 
@@ -31,6 +30,7 @@ class TestConfig:
         with patch.dict(os.environ, {"DEFAULT_MODEL": "gpt-4"}):
             # Need to reimport to pick up new env var
             import importlib
+
             import utilities.config
             importlib.reload(utilities.config)
             assert utilities.config.DEFAULT_MODEL == "gpt-4"
@@ -46,8 +46,8 @@ class TestConfig:
                 del os.environ["AGENT_REGISTRY_FILE"]
             
             from utilities.config import get_agent_registry_path
-            path = get_agent_registry_path()
-            
+            path = str(get_agent_registry_path())
+
             assert "agent_registry.json" in path
             assert "utilities/a2a" in path or "utilities\\a2a" in path
 
@@ -58,7 +58,7 @@ class TestConfig:
                 del os.environ["MCP_CONFIG_FILE"]
             
             from utilities.config import get_mcp_config_path
-            path = get_mcp_config_path()
-            
+            path = str(get_mcp_config_path())
+
             assert "mcp_config.json" in path
             assert "utilities/mcp" in path or "utilities\\mcp" in path

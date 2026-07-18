@@ -2,8 +2,11 @@
 Tests for the terminal server security features.
 """
 
-import pytest
-from mcp_servers.servers.terminal_server.terminal_server import validate_command
+from mcp_servers.servers.terminal_server.terminal_server import (
+    DEFAULT_WORKSPACE,
+    validate_command,
+    validate_paths,
+)
 
 
 class TestValidateCommand:
@@ -73,4 +76,37 @@ class TestValidateCommand:
     def test_allowed_python_command(self):
         """Should allow python commands."""
         is_valid, error = validate_command(["python3", "script.py"])
+        assert is_valid is True
+
+
+class TestValidatePaths:
+    """Tests for workspace path sandboxing."""
+
+    def test_absolute_path_outside_workspace_rejected(self):
+        """Should block absolute paths that escape the workspace."""
+        is_valid, error = validate_paths(["rm", "-rf", "/etc/passwd"])
+        assert is_valid is False
+        assert "outside the workspace" in error
+
+    def test_dotdot_escape_rejected(self):
+        """Should block ../ traversal out of the workspace."""
+        is_valid, error = validate_paths(["cat", "../../.ssh/id_rsa"])
+        assert is_valid is False
+        assert "outside the workspace" in error
+
+    def test_relative_path_inside_workspace_allowed(self):
+        """Should allow relative paths that stay inside the workspace."""
+        is_valid, error = validate_paths(["mkdir", "demo/subdir"])
+        assert is_valid is True
+        assert error == ""
+
+    def test_absolute_path_inside_workspace_allowed(self):
+        """Should allow absolute paths that resolve inside the workspace."""
+        inside = str(DEFAULT_WORKSPACE / "notes.txt")
+        is_valid, error = validate_paths(["touch", inside])
+        assert is_valid is True
+
+    def test_flags_are_ignored(self):
+        """Flags should not be treated as paths."""
+        is_valid, error = validate_paths(["ls", "-la"])
         assert is_valid is True

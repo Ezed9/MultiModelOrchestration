@@ -2,8 +2,6 @@
 Tests for utilities/common/file_loader.py
 """
 
-import os
-import pytest
 from utilities.common.file_loader import load_instructions_file
 
 

@@ -2,10 +2,9 @@
 Tests for utilities/skills/skill_loader.py
 """
 
-import os
-import pytest
 from pathlib import Path
-from utilities.skills.skill_loader import SkillLoader, Skill
+
+from utilities.skills.skill_loader import SkillLoader
 
 
 class TestSkillLoader:
