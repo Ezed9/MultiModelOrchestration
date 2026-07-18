@@ -5,22 +5,22 @@ Routes user requests to specialist agents or MCP tools.
 """
 
 import logging
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 from uuid import uuid4
 
+from a2a.types import AgentCard
+from dotenv import load_dotenv
 from google.adk.agents import LlmAgent
 from google.adk.tools.function_tool import FunctionTool
 from google.genai import types
-from a2a.types import AgentCard
 
-from utilities.a2a.agent_discovery import AgentDiscovery
 from utilities.a2a.agent_connector import AgentConnector
+from utilities.a2a.agent_discovery import AgentDiscovery
 from utilities.common.base_agent import BaseAgent
-from utilities.skills import SkillSearch
-from utilities.mcp.mcp_connect import MCPConnect
 from utilities.config import DEFAULT_MODEL
+from utilities.mcp.mcp_connect import MCPConnect
+from utilities.skills import SkillSearch
 
-from dotenv import load_dotenv
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -126,10 +126,17 @@ class HostAgent(BaseAgent):
 
     # ---------------- BUILD ---------------- #
 
-    def _build_agent(self) -> LlmAgent:
+    def _build_agent(self, agent_cards: list[AgentCard] | None = None) -> LlmAgent:
         """Build the agent with all tools loaded."""
         # This is called during _ensure_initialized after MCP tools are loaded
         mcp_tools = self.mcp_connector.get_tools()
+
+        # Discovered specialist agents, injected so routing needs no hardcoded names
+        agent_info = ""
+        if agent_cards:
+            agent_info = "\n\nAvailable specialist agents (delegate with _delegate_task):\n"
+            for card in agent_cards:
+                agent_info += f"- {card.name}: {card.description}\n"
 
         # Load skills and build skill awareness for system prompt
         skills = self.skill_search.list_all()
@@ -142,7 +149,7 @@ class HostAgent(BaseAgent):
         return LlmAgent(
             name=self.name,
             model=self.model,
-            instruction=self.system_instruction + skill_info,
+            instruction=self.system_instruction + agent_info + skill_info,
             description=self.description,
             tools=[
                 FunctionTool(self._delegate_task),
@@ -164,9 +171,12 @@ class HostAgent(BaseAgent):
             
             logger.info("Loading MCP tools...")
             await self.mcp_connector.load_all_tools()
-            
+
+            logger.info("Discovering specialist agents...")
+            agent_cards = await self.agent_discovery.list_agent_cards()
+
             logger.info("Building HostAgent with tools...")
-            self._agent = self._build_agent()
+            self._agent = self._build_agent(agent_cards)
             self._runner = self._build_runner(self._agent)
             logger.info("HostAgent initialization complete")
 
